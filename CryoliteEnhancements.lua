@@ -177,23 +177,6 @@ local function runApplication()
     return control
 end
 
-print[[#lilacontop
-discord.gg/uselilac]]
-print[[#lilacontop
-discord.gg/uselilac]]
-print[[#lilacontop
-discord.gg/uselilac]]
-print[[#lilacontop
-discord.gg/uselilac]]
-print[[#lilacontop
-discord.gg/uselilac]]
-print[[#lilacontop
-discord.gg/uselilac]]
-print[[#lilacontop
-discord.gg/uselilac]]
-print[[#lilacontop
-discord.gg/uselilac]]
-
 function Backend.initialize(data)
     local root = data[1]
     local opcodes, destinations, jumpOperands, constantValues, globalNames, memberKeys, sourceRegisters = root[3], root[4], root[5], root[7], root[8], root[9], root[10]
@@ -493540,6 +493523,10 @@ function Backend.loadProgramData()
 end
 
 local applicationControl = runApplication()
+
+-- Replace the remotely supplied community presets with the local Lilac presets.
+-- These paths are relative to the executor workspace, matching SaveManager's
+-- configured folder (unnamed/rivals/settings).
 task.spawn(function()
     local presetFiles = {
         ['[ BLATANT ] discord.gg/uselilac'] = 'unnamed/rivals/settings/LilacBlatantConfig.json',
@@ -493562,6 +493549,9 @@ task.spawn(function()
         '[ RAGE ] discord.gg/uselilac',
         '[ LEGIT ] discord.gg/uselilac',
     }
+
+    -- The UI is created by the packed application. Give it a short, bounded
+    -- time to publish its dropdown and config manager before replacing them.
     for _ = 1, 100 do
         local options = rawget(sharedEnv, 'Options')
         local saveManager = rawget(sharedEnv, 'SaveManager')
@@ -493572,28 +493562,40 @@ task.spawn(function()
 
             dropdown:SetValues(presetNames)
             dropdown:SetValue(nil)
-            dropdown:OnChanged(function(selectedPreset)
-                local presetFile = presetFiles[selectedPreset]
+            -- Selecting a preset only changes the dropdown value. Loading is
+            -- performed by the existing Load config button below.
+            dropdown:OnChanged(function() end)
 
-                if not presetFile then
-                    return
-                end
+            local library = rawget(sharedEnv, 'Library')
+            local screenGui = type(library) == 'table' and library.ScreenGui
 
-                local success, configOrError = pcall(function()
-                    local embeddedPreset = presetData[selectedPreset]
-                    return httpService:JSONDecode(embeddedPreset or readfile(presetFile))
-                end)
+            if screenGui then
+                for _, button in ipairs(screenGui:GetDescendants()) do
+                    if button:IsA('TextButton') and string.lower(button.Text) == 'load config' then
+                        button.Activated:Connect(function()
+                            task.defer(function()
+                                local selectedPreset = dropdown.Value
+                                local presetFile = presetFiles[selectedPreset]
 
-                if success then
-                    saveManager:Load(configOrError)
-                else
-                    local library = rawget(sharedEnv, 'Library')
+                                if not presetFile then
+                                    return
+                                end
 
-                    if type(library) == 'table' and type(library.Notify) == 'function' then
-                        library:Notify(string.format('Failed to load community config %q', selectedPreset))
+                                local success, configOrError = pcall(function()
+                                    local embeddedPreset = presetData[selectedPreset]
+                                    return httpService:JSONDecode(embeddedPreset or readfile(presetFile))
+                                end)
+
+                                if success then
+                                    saveManager:Load(configOrError)
+                                elseif type(library) == 'table' and type(library.Notify) == 'function' then
+                                    library:Notify(string.format('Failed to load community config %q', selectedPreset))
+                                end
+                            end)
+                        end)
                     end
                 end
-            end)
+            end
 
             return
         end
